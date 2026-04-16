@@ -1,11 +1,7 @@
-example*.py
-electroMICA.py
 .venv
-micapipe_readme.md
-
+__pycache__/
 docs/__pycache__/
 .DS_Store
 functions/__pycache__/
 docs/build/*
 docs/build_
-

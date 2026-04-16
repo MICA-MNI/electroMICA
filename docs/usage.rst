@@ -178,22 +178,21 @@ For iEEG:
 
 .. code-block::
 
-   channel_name    value   metadata
-   E1              0.45    contact_1
-   E2              0.52    contact_2
+   ChannelName    feature_name_1   feature_name2   ...
+   E1-E2    0.45    10.2    ...
+   E2-E3    0.52    6.4     ...
    ...
 
 For scalp EEG:
 
 .. code-block::
 
-   electrode_label    value   unit
-   Cz                 1.23    µV
-   Pz                 1.15    µV
+   ChannelName   feature_name_1  feature_name_2    ...
+   Cz    1.23    -3.1    ...
+   Pz    1.15    -2.8    ...
    ...
 
-The first column should match electrode/channel names in your BIDS dataset.
-
+The first column should match electrode names in your BIDS dataset, the reference is the average of all channels. Do not include bad channels in the feature file.
 
 
 
@@ -202,8 +201,8 @@ Detailed Inputs
 
 iEEG:
 - from micapipe/anat/: T1w image, brain mask
-- from micapipe/surf/: L and R, midthickness, fsnative, fsaverage5, fsLR-32k surfaces
-- from hippunfold/surf/ (optional): L and R, midthickness, den-0p5mm and den-2mm
+- from micapipe/surf/: L and R, midthickness, fsnative, fsLR-32k surfaces
+- from hippunfold/surf/ (optional): L and R, midthickness, den-0p5mm, den-2mm, den-8k
 - from BIDS-iEEG/: electrodes.tsv, associated image (ideally T1w)
 - feature file: channel names and feature values, one column per feature (for bad channels, exclude the channel or assign NaN value to feature)
 
@@ -211,7 +210,7 @@ Scalp EEG:
 - from micapipe/anat/: T1w image, brain mask
 - from micapipe/surf/: L and R, midthickness, fsLR-32k surfaces
 - from micapipe/xfm/: transform files from nativepro to MNI space
-- from hippunfold/surf/ (optional): L and R, midthickness, den-2mm
+- from hippunfold/surf/ (optional): L and R, midthickness, den-2mm or den-8k
 - from BIDS-EEG/: electrodes.tsv (optional if standard 10-10/10-20 set is used)
 - feature file: electrode names and feature values, one column per feature (for bad channels, exclude the channel or assign NaN value to feature)
 
@@ -227,25 +226,20 @@ After running `electroMICA`, the ``electroMICA`` derivatives folder is organized
    ├── anat/                    # Anatomical images (T1w, brain mask)
    ├── feat/                    # Input feature files
    ├── maps/                    # Projected feature maps (main output)
-   │   ├── sub-XX_ses-YY_FEATURE-NAME_SURFACE-NAME.mat
-   │   └── ...
    ├── model/                   # Leadfield / sensitivity matrices (.mat files)
    ├── surf/                    # Surface GIFTI files (cortical, hippocampal)
    └── xfm/                     # Transform files (electrode to MRI alignment)
 
-For each feature and surface, a matlab file is created in the with /maps fodler, with the following variables:
+For each feature and surface, gifti files are created in the with /maps folder:
 iEEG:
-FeatureValue: Feature value for each channel (per column if multiple features)
-FeatureName: name of the feaatures (per column of the FeatureValue variable)
-FeatureMap: feature values at each vertex of the surface
-Vertices: vertex coordinates of the surface
-Faces: face connectivity of the vertices
+FEATURE-NAME_SURFACE-NAME.gii : Piecewise constant projection (based on channel with maximum sesnsitivity)
+FEATURE-NAME_SURFACE-NAME_smooth.gii : Weighted average projection (based on relative sensitivities)
 
 Scalp EEG:
-FeatureValue: Feature value for each channel (per column if multiple features)
-FeatureName: name of the feaatures (per column of the FeatureValue variable)
-FeatureMap: feature values at each vertex of the surface
-Vertices: vertex coordinates of the surface
-Faces: face connectivity of the vertices
-Alpha: regularization parameter values (related to SNR level, see :ref:`algorithm`)
+FEATURE-NAME_SURFACE-NAME_VeryLowSNR.gii
+FEATURE-NAME_SURFACE-NAME_LowSNR.gii
+FEATURE-NAME_SURFACE-NAME_MediumSNR.gii
+FEATURE-NAME_SURFACE-NAME_HighSNR.gii
+FEATURE-NAME_SURFACE-NAME_VeryHighSNR.gii
 
+Results for SNR changes in steps of 5, from very low SNR for noisy single events barely distinguisheable from the background to very high SNR of average of high number of clear events.

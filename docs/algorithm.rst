@@ -17,59 +17,19 @@ Intracranial EEG (iEEG) Method
    :alt: electroMICA iEEG visual example
    :width: 90%
 
+The main steps of the pipeline are: initial transformation of electrode positions to micapipe’s nativepro space, computation of sensitivity of iEEG channels to generators on cortical and hippocampal surfaces, and construction of cortical maps of input features. 
+To compute the sensitivity of the SEEG channels to neuronal generators of electric activity at each node of the cortical surface, the electromagnetism equations governing the electric phenomena in the brain are solved with the Boundary Element Method (BEM). The head is modeled as a single layer given by the inner-skull surface, obtained from the brain mask. The generators of electric activity are modeled as a current density double layer on the cortical surface, linearly interpolated between the nodes. 
 
-**Problem Setup**
+von Ellenrieder et al. On the EEG/MEG forward problem solution for distributed cortical sources. Med Biol Eng Comput. 2009;47(10):1083-1091. doi:10.1007/s11517-009-0529-x
 
-Depth electrodes (intracranial recordings) are modeled as line segments 
-embedded in a volume conductor. The brain is approximated as a **homogeneous single-layer conductor** 
-(to first approximation; more complex models can be used if needed).
+This model is different than usual models for distributed activity, avoiding mathematical singularities of multiple-dipole models with large numerical instabilities when the electrodes are close to the cortical surface. This more realistic and mathematical well-behaved model we adopt is unique to electro-MICA. 
+The metallic contacts of the electrodes are modelled as a line with the true length of the contact, not a single point. The electric potential at the electrode is computed as the average potential along this line, with 5th order Gauss-Legendre quadrature. 
 
-**Contact Sensitivity Profiles**
-
-The core computation is the **contact sensitivity profile** — also called the **leadfield** — which 
-quantifies how electrical activity at each point on the cortical surface contributes to the 
-measured potential at each electrode contact.
-
-Given:
-- Contact position: :math:`\mathbf{r}_k`
-- Cortical surface: mesh with vertices :math:`\{\mathbf{r}_i\}`
-- Conductivity: :math:`\sigma` (homogeneous)
-
-The forward problem is formulated using the **Boundary Element Method**:
-
-**Analytic Element Integration**
-
-To improve accuracy, `electroMICA` uses **analytically integrated basis functions** 
-over triangular surface elements (rather than numerical quadrature). This follows the approach in:
-
-   de Munck, J. C. (1992). A linear discretization of the volume conductor boundary integral 
-   equation using analytically integrated elements. IEEE Trans Biomed Eng, 39(10), 986–990.
-
-Each triangular element's contribution is computed analytically, improving both speed and accuracy.
-
-
-.. image:: ../img/figure2.png
-   :alt: approach comparisson
-   :width: 90%
-
-
-**Feature Mapping**
-
-Once the sensitivity profiles are computed, a feature value (e.g., spike rate, power, etc.) 
-at each contact is mapped to the cortical surface as:
-
-
-**Thresholding**
-
-To suppress noisy projections, two thresholds are applied:
-
-1. **Channel threshold** (``ChanTresh``): Contacts contributing < threshold are ignored.
-2. **Global threshold** (``GlobalTresh``): Vertices with total sensitivity < threshold are masked out.
+The sensitivity of iEEG decreases very rapidly with the distance to the contacts. The sensitivity to generators far from the contacts is negligible compared to the measurement noise or masked by activity closer to the channel. Thus, two thresholds are applied for the constructions of the feature maps. A threshold common to all channels reflecting the effect of the noise (0.001 Vm/A), and a channel dependent relative threshold (0.05 of the maximum sensitivity of the channel). The sensitivity of each iEEG channel is computed based on the contact sensitivities. Finally, each node of the surfaces is assigned the value of the feature from the channel with highest sensitivity at that node (piecewise constant map) or a weighted average of the features with the weights given by the thresholded channel sensitivities. Large portions of the cortex are typically far from all iEEG contacts and will not be observable with iEEG. The maps show no value (NaN) for the surface vertices in these regions. 
 
 .. image:: ../img/figure3.png
    :alt: validation
-   :width: 90%
-
+   :width: 70%
 
 Scalp EEG Method
 ----------------
@@ -78,84 +38,19 @@ Scalp EEG Method
    :alt: electroMICA iEEG visual example
    :width: 90%
 
-**Problem Setup**
+The head model is a three-layer model (brain, skull, skin) built from the T1-weighted volume in nativepro space from micapipe and its brain mask, through morphological processing. Anatomical landmarks in the pre-auricular points, nasion and inion, as well as the location of 10-10 scalp electrodes are approximated from the transformed positions in MNI152 space, projected onto the scalp surface of the subject. If non-standard electrode locations are used, the a registration based on anatomical landmarks is carried out. 
+The generators of electric activity are modeled as distributed dipolar sheets on the cortical surfaces from micapipe, and optionally the hippocampal surfaces from HippUnfold. 
+The forward problem is solved using BEM, and the source localization using eLORETA, with a smoothed covariance prior. 
+Five different solutions are computed for each feature, corresponding to very-low, low, medium, high, and very-high signal-to-noise (SNR) values. The user can choose which corresponds to the data under analysis, from a single event almost completely masked by noise (very-low SNR, SNR0/25), to an extremely clear average of a large number of events in a good quality recording (very-high SNR, 25 SNR0).
 
-Scalp EEG recordings measure electrical activity from electrode contacts placed on the scalp. 
-Unlike iEEG, we must model the **three-layer head** (scalp, skull, brain) and account for 
-conductivity differences between layers.
-
-**Three-Layer Head Model**
-
-The head model is derived from the subject's T1-weighted MRI:
-
-1. **Outer boundary** (scalp surface)
-2. **Middle boundary** (skull surface) — derived from the brain mask
-3. **Inner boundary** (brain/cortical surface)
-
-Conductivity values (typically):
-- Scalp: :math:`\sigma_{\text{scalp}} = 0.33` S/m
-- Skull: :math:`\sigma_{\text{skull}} = 0.015` S/m
-- Brain: :math:`\sigma_{\text{brain}} = 0.33` S/m
-
-**Forward Problem: BEM Solution**
-
-The forward problem is: "Given a source distribution on the cortex, what are the 
-resulting potentials at the scalp?"
-
-Using BEM with three layers, a linear system is solved.
-The **leadfield matrix** :math:`K` maps cortical source activity to scalp potentials:
-
-
-**Inverse Problem: eLORETA with Spatial Correlation**
-
-Given measured scalp EEG features, we estimate the underlying cortical source distribution.
-A standard inverse method (eLORETA-like) is with a **non-diagonal weighting matrix** is constructed to penalize spatially uncorrelated solutions,
-encouraging smooth, realistic source patterns.
-
-**Multiple SNR Variants**
-
-Five feature maps are computed for SNR levels: very high, high, medium, low, very low (in 7 dB steps).
-Different regularization parameters are used for each SNR level, allowing flexibility in interpretation.
-
-
-Hippocampal Integration
------------------------
-
-When `hippunfold <https://hippunfold.readthedocs.io>`_ outputs are available, 
-the hippocampal midthickness surface is added to the source space:
-
-- For **iEEG**: Hippocampal surface is included in the sensitivity profile computation.
-- For **scalp EEG**: Hippocampal vertices are added to the leadfield matrix rows.
-
-This allows features to be projected onto hippocampal subfields (CA, DG, subiculum, etc.) 
-in addition to the main cortex.
 
 Output Files
 ~~~~~~~~~~~~
 
 The pipeline generates:
 
-- **Leadfield/Sensitivity matrices** (`.mat`): Contains the :math:`K` matrix and metadata
-- **Feature maps** (`.gii` GIFTI): Vertex-wise projected features
-
-References
-----------
-
-Key papers and methods:
-
-1. **BEM Formulation**:
-   - de Munck, J. C. (1992). IEEE Trans Biomed Eng, 39(10), 986–990.
-
-2. **eLORETA**:
-   - Pascual-Marqui, R. D. (2002). Standardized low-resolution brain electromagnetic tomography (sLORETA).
-     Methods Find Exp Clin Pharmacol, 24(Suppl D), 5–12.
-
-3. **Intracranial EEG Imaging**:
-   - Lachaux, J.-P., et al. (2003). Nat Rev Neurosci, 4(5), 369–380.
-
-4. **Head Modeling in EEG**:
-   - Hallez, H., et al. (2007). J Neuroeng Rehabil, 4, 46.
-
+- **Leadfield/Sensitivity matrices** (`.mat`): Contains the leadfield matrix and other model information, output in `/model`.
+- **Feature maps** (`.gii` GIFTI): Vertex-wise projected features, output in `/maps`.
 
 See Also
 --------

@@ -11,7 +11,7 @@ electroMICA
 `the Neuro <https://www.mcgill.ca/neuro/>`_, McConnell Brain Imaging Center (`BIC <https://www.mcgill.ca/bic/>`_).
 
 The main goal of `electroMICA` is to provide a robust framework to integrate electrophysiological data 
-(scalp EEG, intracranial EEG, stereo-EEG) with information derived from multimodal MR images processed 
+(scalp EEG, intracranial EEG) with information derived from multimodal MR images processed 
 by `micapipe <https://micapipe.readthedocs.io>`_and `hippunfold <https://hippunfold.readthedocs.io>`. It contains two pipelines:
 
 **electroMICA_iEEG:**
@@ -71,6 +71,7 @@ Key Features
 
 **intracerebral or stereo EEG**
    Depth electrodes are modeled as line segments in a single-layer homogeneous conductor.
+   Unique distributed dipolar sheets generator model with no mathematical singularity.
    Contact sensitivity profiles are computed via BEM with analytic element integration.
    Features are mapped to cortical/hippocampal vertices using contact sensitivity weighting.
 
