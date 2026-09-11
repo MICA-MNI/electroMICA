@@ -6,6 +6,9 @@
 ## Documentation ##
 You can find the documentation in [electroMICA.readthedocs.io](http://electroMICA.readthedocs.io/en/latest/)
 
+## Example ##
+Download an set of example files to test the pipeline from from the [release](https://github.com/MICA-MNI/electroMICA/releases/tag/worked_example).
+
 ## Reference ##
 Not available yet.
 
