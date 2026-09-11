@@ -111,17 +111,21 @@ def electroMICA_iEEG(output_folder, feature, electrodes=None, micapipe_derivativ
     # Copy hippocampal surfaces if requested
     # ------------------------------------------------------------
     if hippunfold_derivatives is not None:
-        _, seh = os.path.split(hippunfold_derivatives)
-
+        ph, seh = os.path.split(hippunfold_derivatives)
+        if not(seh):
+            _, seh = os.path.split(ph)
         # Ensure correct sub/ses navigation
         if not (seh.startswith("sub-") or seh.startswith("ses-")):
             hippunfold_derivatives = os.path.join(hippunfold_derivatives, sub)
             if os.path.isdir(os.path.join(hippunfold_derivatives, "ses-01")):
                 hippunfold_derivatives = os.path.join(hippunfold_derivatives, "ses-01")
-
+                seh="ses-01"
         src = os.path.join(hippunfold_derivatives, "surf",
-                           f"{sub}_*space-T1w_den-*_label-hipp_midthickness.surf.gii*")
+                           f"{sub}_*space-T1w_den-*_label-*_midthickness.surf.gii*")
         for f in glob.glob(src):
+            # _, g = os.path.split(f)
+            # g.replace("_"+seh+"_","_"+se)
+            # shutil.copy2(f, os.path.join(fol, "surf", g))
             shutil.copy2(f, os.path.join(fol, "surf"))
 
     # ------------------------------------------------------------
@@ -130,6 +134,8 @@ def electroMICA_iEEG(output_folder, feature, electrodes=None, micapipe_derivativ
     if micapipe_derivatives is not None:
 
         _, seh = os.path.split(micapipe_derivatives)
+        if not(seh):
+            _, seh = os.path.split(ph)
         if not (seh.startswith("sub-") or seh.startswith("ses-")):
             micapipe_derivatives = os.path.join(micapipe_derivatives, sub)
             if os.path.isdir(os.path.join(micapipe_derivatives, "ses-01")):
@@ -298,9 +304,6 @@ def electroMICA_ScalpEEG(output_folder, feature, electrodes=None,
 
         src = os.path.join(hippunfold_derivatives, "surf",
                            f"{sub}_*space-T1w_den-2*_label-hipp_midthickness.surf.gii*")
-        if not glob.glob(src):
-            src = os.path.join(hippunfold_derivatives, "surf",
-                           f"{sub}_*space-T1w_den-8*_label-hipp_midthickness.surf.gii*")
         for f in glob.glob(src):
             shutil.copy2(f, os.path.join(fol, "surf"))
 
@@ -918,7 +921,19 @@ def ComputeSensitivityProfile(sub, se, fol, p1, t1, di, cond_brain, ContactLengt
         'L_space-T1w_den-0p5mm_label-hipp_',
         'r_space-T1w_den-0p5mm_label-hipp_',
         'L_space-T1w_den-2mm_label-hipp_',
-        'r_space-T1w_den-2mm_label-hipp_']
+        'r_space-T1w_den-2mm_label-hipp_',
+        'L_space-T1w_den-8k_label-hipp_',
+        'r_space-T1w_den-8k_label-hipp_',
+        'L_space-T1w_den-2k_label-hipp_',
+        'r_space-T1w_den-2k_label-hipp_',
+        'L_space-T1w_den-0p5mm_label-dentate_',
+        'r_space-T1w_den-0p5mm_label-dentate_',
+        'L_space-T1w_den-2mm_label-dentate_',
+        'r_space-T1w_den-2mm_label-dentate_',
+        'L_space-T1w_den-8k_label-dentate_',
+        'r_space-T1w_den-8k_label-dentate_',
+        'L_space-T1w_den-2k_label-dentate_',
+        'r_space-T1w_den-2k_label-dentate_']
     
     delta = np.array([-0.90618, -0.538469, 0, 0.538469, 0.90618]) * ContactLength
     w = np.array([0.236927, 0.478629, 0.568889, 0.478629, 0.236927])
@@ -957,7 +972,10 @@ def ComputeSensitivityProfile(sub, se, fol, p1, t1, di, cond_brain, ContactLengt
                 'ContactOutsideBrain': ContactOutsideBrain,
                 'ContactSensitivityMap': ContactSensitivityMap,
                 'Vertices': ps,
-                'Faces': ts}
+                'Faces': ts,
+                'p1': p1,
+                't1': t1,
+                'delta': delta}
             savemat(
                 fol / 'model' / f"{sub}_{se}leadfield_hemi-{surfaces[i]}midthickness.mat",
                 results)
@@ -1062,16 +1080,26 @@ def ComputeFeatureMaps(fol, feature, ChanTresh, GlobalTresh):
             # Save results as GIFTI surface metric file(s)
             # Each column in FeatureMap corresponds to one feature (FeatureName[j])
             gif = nib.gifti.GiftiImage()
+            if "hemi-L" in surface:
+                hemi='Left'
+            else:
+                hemi='Right'
+            anastruct='Cortex' + hemi
+            if "label-hipp" in surface:
+                anastruct='Hippocampus' + hemi 
+            if "label-dentate" in surface:
+                anastruct='HippocampusDentate' + hemi     
+            gif.meta['AnatomicalStructurePrimary']=anastruct
             for j, fname in enumerate(FeatureName):
                 data = np.asarray(FeatureMap[:, j], dtype=np.float32)
                 # Create a GiftiDataArray for this feature and attach metadata
                 da = nib.gifti.GiftiDataArray(data=data, 
                     intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
                     datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                    meta={"Feature": str(fname)})
+                    meta={"Name": str(fname)})
                 gif.add_gifti_data_array(da)
             out_path = fol / 'maps' / f"{Path(feature_file).stem}{surface}"
-            out_path =  str(out_path)[:-4] + "_smooth.gii"
+            out_path =  str(out_path)[:-4] + "_smooth.func.gii"
             nib.save(gif, out_path)
 
             # Nearest neighbor interpolation
@@ -1099,15 +1127,16 @@ def ComputeFeatureMaps(fol, feature, ChanTresh, GlobalTresh):
             # Save results as GIFTI surface metric file(s)
             # Each column in FeatureMap corresponds to one feature (FeatureName[j])
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']=anastruct
             for j, fname in enumerate(FeatureName):
                 data = np.asarray(FeatureMap[:, j], dtype=np.float32)
                 # Create a GiftiDataArray for this feature and attach metadata
                 da = nib.gifti.GiftiDataArray(data=data, 
                     intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
                     datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                    meta={"Feature": str(fname)})
+                    meta={"Name": str(fname)})
                 gif.add_gifti_data_array(da)
-            out_path =  str(out_path)[:-4] + ".gii"
+            out_path =  str(out_path)[:-4] + ".func.gii"
             nib.save(gif, out_path)
 
 
@@ -1128,14 +1157,14 @@ def ContactProperties(fol, sub, ContactPosition, ContactLength):
         p = ContactPosition - ContactPosition[i]
         p_norm = np.linalg.norm(p, axis=1, keepdims=True)
         # Compute distance matrix
-        px=p[:,0][:, np.newaxis] / p_norm
-        py=p[:,1][:, np.newaxis] / p_norm
-        pz=p[:,2][:, np.newaxis] / p_norm
+        px=np.abs(p[:,0][:, np.newaxis]) / p_norm
+        py=np.abs(p[:,1][:, np.newaxis]) / p_norm
+        pz=np.abs(p[:,2][:, np.newaxis]) / p_norm
         d = (px - px.T)**2 + (py - py.T)**2 + (pz - pz.T)**2
         d += np.eye(d.shape[0]) * 2
         d[i,:] = 2
         d[:,i] = 2 
-        i1, _ = np.where(d < 1e-6)
+        i1, _ = np.where(d < 1e-5)
         u1, counts = np.unique(i1, return_counts=True)
         u1 = u1[counts > 1]
         di[i, :] = np.mean(p[u1, :], axis=0)   
@@ -1302,22 +1331,22 @@ def solve_inverse_problem(fol, sub, se, feature):
     # -------------------------------------------------------
     # Optional Hippocampus Leadfields
     # -------------------------------------------------------
-    include_hipp = 2
+    include_hipp = 1
     lh_hipp = os.path.join(
         fol, "model", f"{sub}_{se}hemi-L_space-T1w_den-2mm_label-hipp_midthickness_leadfield.mat"
     )
     if not os.path.exists(lh_hipp):
         lh_hipp = os.path.join(
-            fol, "model", f"{sub}_{se}hemi-L_space-T1w_den-8k_label-hipp_midthickness_leadfield.mat"
+            fol, "model", f"{sub}_{se}hemi-L_space-T1w_den-2k_label-hipp_midthickness_leadfield.mat"
         )
     rh_hipp = os.path.join(
         fol, "model", f"{sub}_{se}hemi-R_space-T1w_den-2mm_label-hipp_midthickness_leadfield.mat"
     )
     if not os.path.exists(rh_hipp):
         rh_hipp = os.path.join(
-            fol, "model", f"{sub}_{se}hemi-R_space-T1w_den-8k_label-hipp_midthickness_leadfield.mat"
+            fol, "model", f"{sub}_{se}hemi-R_space-T1w_den-2k_label-hipp_midthickness_leadfield.mat"
         )
-        include_hipp=8
+        include_hipp=2
 
     if os.path.exists(lh_hipp) and os.path.exists(rh_hipp):
 
@@ -1437,13 +1466,15 @@ def solve_inverse_problem(fol, sub, se, feature):
         # -------------------------------------------------------
         # Save separate maps
         # -------------------------------------------------------
-        tsl +=1
-        tsr +=1
 
         _,base = os.path.split(fname)
         base=base[:-4]
         
         # Left hemisphere    
+
+        # # Save as matlab file
+        # tsl +=1
+        # tsr +=1
         # savemat(os.path.join(
         #    fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness.mat"
         # ), {
@@ -1458,53 +1489,64 @@ def solve_inverse_problem(fol, sub, se, feature):
         
         # Save results as GIFTI surface metric file(s)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexLeft'
         data = np.asarray(SourceImaging[:len(psl), :, 4], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_VeryLowSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_VeryLowSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexLeft'
         data = np.asarray(SourceImaging[:len(psl), :, 3], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_LowSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_LowSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexLeft'
         data = np.asarray(SourceImaging[:len(psl), :, 2], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_MediumSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_MediumSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexLeft'
         data = np.asarray(SourceImaging[:len(psl), :, 1], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_HighSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_HighSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexLeft'
         data = np.asarray(SourceImaging[:len(psl), :, 0], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_VeryHighSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-L_space-nativepro_surf-fsLR-32k_label-midthickness_VeryHighSNR.func.gii")
         nib.save(gif, out_path)
-
 
         # Right hemisphere
+
+        # # Save as matlab file
         # savemat(os.path.join(
         #     fol, "maps", base+"_hemi-Rspace-nativepro_surf-fsLR-32k_label-midthickness.mat"
         # ), {
@@ -1519,113 +1561,134 @@ def solve_inverse_problem(fol, sub, se, feature):
 
         # Save results as GIFTI surface metric file(s)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexRight'
         data = np.asarray(SourceImaging[len(psl):len(psl)+len(psr), :, 4], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_VeryLowSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_VeryLowSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexRight'
         data = np.asarray(SourceImaging[len(psl):len(psl)+len(psr), :, 3], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_LowSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_LowSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexRight'
         data = np.asarray(SourceImaging[len(psl):len(psl)+len(psr), :, 2], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_MediumSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_MediumSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexRight'
         data = np.asarray(SourceImaging[len(psl):len(psl)+len(psr), :, 1], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_HighSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_HighSNR.func.gii")
         nib.save(gif, out_path)
         gif = nib.gifti.GiftiImage()
+        gif.meta['AnatomicalStructurePrimary']='CortexRight'
         data = np.asarray(SourceImaging[len(psl):len(psl)+len(psr), :, 0], dtype=np.float32)
-        da = nib.gifti.GiftiDataArray(data=data, 
-            intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-            datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-            meta={"Feature": str(fname)})
-        gif.add_gifti_data_array(da)
-        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_VeryHighSNR.gii")
+        for j , fename in enumerate(FeatureName):
+            da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                meta={"Name": str(fename)})
+            gif.add_gifti_data_array(da)
+        out_path =  os.path.join(fol, "maps", base+"_hemi-R_space-nativepro_surf-fsLR-32k_label-midthickness_VeryHighSNR.func.gii")
         nib.save(gif, out_path)
-
 
         # Hippocampus optional
         if include_hipp > 0:
             start = len(psl) + len(psr)
-            thl +=1
-            thr +=1
             hte='2mm'
-            if include_hipp == 8:
-                hte='8k'
+            if include_hipp == 2:
+                hte='2k'
             # Save results as GIFTI surface metric file(s)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
             data = np.asarray(SourceImaging[start:start+len(phl), :, 4], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryLowSNR.gii")
+                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryLowSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
             data = np.asarray(SourceImaging[start:start+len(phl), :, 3], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_LowSNR.gii")
+                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_LowSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
             data = np.asarray(SourceImaging[start:start+len(phl), :, 2], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_MediumSNR.gii")
+                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_MediumSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
             data = np.asarray(SourceImaging[start:start+len(phl), :, 1], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_HighSNR.gii")
+                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_HighSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusLeft'
             data = np.asarray(SourceImaging[start:start+len(phl), :, 0], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryHighSNR.gii")
+                fol, "maps", base+"_hemi-L_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryHighSNR.func.gii")
             nib.save(gif, out_path)
 
-            # savemat(os.path.join(
+            # # Save as matlab file
+            # thl +=1
+            # thr +=1
+            #             # savemat(os.path.join(
             #     fol, "maps", base+"_hemi-L_space-T1w_den-2mm_label-hipp_midthickness.mat"
             # ), {
             #     "FeatureMap": SourceImaging[start:start+len(phl), :, :],
@@ -1639,56 +1702,67 @@ def solve_inverse_problem(fol, sub, se, feature):
             # })
 
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusRight'
             data = np.asarray(SourceImaging[start+len(phl):start+len(phl)+len(phr), :, 4], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryLowSNR.gii")
+                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryLowSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusRight'
             data = np.asarray(SourceImaging[start+len(phl):start+len(phl)+len(phr), :, 3], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_LowSNR.gii")
+                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_LowSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusRight'
             data = np.asarray(SourceImaging[start+len(phl):start+len(phl)+len(phr), :, 2], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_MediumSNR.gii")
+                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_MediumSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusRight'
             data = np.asarray(SourceImaging[start+len(phl):start+len(phl)+len(phr), :, 1], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_HighSNR.gii")
+                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_HighSNR.func.gii")
             nib.save(gif, out_path)
             gif = nib.gifti.GiftiImage()
+            gif.meta['AnatomicalStructurePrimary']='HippocampusRight'
             data = np.asarray(SourceImaging[start+len(phl):start+len(phl)+len(phr), :, 0], dtype=np.float32)
-            da = nib.gifti.GiftiDataArray(data=data, 
-                intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
-                datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
-                meta={"Feature": str(fname)})
-            gif.add_gifti_data_array(da)
+            for j , fename in enumerate(FeatureName):
+                da = nib.gifti.GiftiDataArray(data=data[:,j], 
+                    intent=nib.nifti1.intent_codes['NIFTI_INTENT_NONE'],
+                    datatype=nib.nifti1.data_type_codes['NIFTI_TYPE_FLOAT32'],
+                    meta={"Name": str(fename)})
+                gif.add_gifti_data_array(da)
             out_path =  os.path.join(
-                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryHighSNR.gii")
+                fol, "maps", base+"_hemi-R_space-T1w_den-"+hte+"_label-hipp_midthickness_VeryHighSNR.func.gii")
             nib.save(gif, out_path)
 
+            # # Save as matlab file
             # savemat(os.path.join(
             #     fol, "maps", base+"_hemi-R_space-T1w_den-2mm_label-hipp_midthickness.mat"
             # ), {
@@ -2076,8 +2150,8 @@ def compute_leadfield(fol, sub, se):
         surface = [
             'L_space-nativepro_surf-fsLR-32k_label-',
             'R_space-nativepro_surf-fsLR-32k_label-',
-            'L_space-T1w_den-8k_label-hipp_',
-            'R_space-T1w_den-8k_label-hipp_'
+            'L_space-T1w_den-2k_label-hipp_',
+            'R_space-T1w_den-2k_label-hipp_'
         ]
 
         # If hippocampal surfaces missing, drop them
@@ -2342,6 +2416,7 @@ def build_BEM_model(fol, sub, se):
         _, z = np.where(sca2[ii,:,:])
         if len(z): zn[ii] = z.max()
     h = min(np.where(zn > 149)[0][0], x[0] - 2)
+    h = max(h,1)
     sca2[:h,:,:] = False
 
     zn = np.zeros(50, dtype=int)
@@ -2349,6 +2424,7 @@ def build_BEM_model(fol, sub, se):
         _, z = np.where(sca2[-ii-1,:,:])
         if len(z): zn[ii] = z.max()
     h = max(sca2.shape[0]-np.where(zn > 149)[0][0], x[1] + 3)
+    h = min(h, sca2.shape[0]-1)
     sca2[h:,:,:] = False
 
     # Closing to remove holes
