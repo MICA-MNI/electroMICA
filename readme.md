@@ -16,6 +16,8 @@ Intracerebral EEG: electroMICA_iEEG
 Scalp EEG: electroMICA_scalp
 ![electroMICA_scalp](img/workflow-scalp.png)
 
+Download and unzip the example in the release, modify one line in included_example.py, and run the example.
+
 ## Advantages ##
 -   Appropriate modelling of electrode and geneartor for intracranial EEG.
 -   Subject speific head model generation ofr scalp EEG.  
